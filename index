@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>竞拍之王 - 仓库寻宝</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&display=swap');
+        
+        body {
+            background-color: #1a1a1a;
+            color: #e2e8f0;
+            font-family: 'Inter', system-ui, sans-serif;
+        }
+
+        .game-font {
+            font-family: 'ZCOOL KuaiLe', cursive;
+        }
+
+        .auction-card {
+            background: linear-gradient(145deg, #2d3748, #1a202c);
+            border: 2px solid #4a5568;
+            transition: all 0.3s ease;
+        }
+
+        .ai-bubble {
+            position: relative;
+            background: #2d3748;
+            border-radius: .4em;
+        }
+
+        .ai-bubble:after {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 50%;
+            width: 0;
+            height: 0;
+            border: 10px solid transparent;
+            border-right-color: #2d3748;
+            border-left: 0;
+            margin-top: -10px;
+            margin-left: -10px;
+        }
+
+        @keyframes pulse-gold {
+            0% { box-shadow: 0 0 0 0 rgba(212, 175, 55, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(212, 175, 55, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(212, 175, 55, 0); }
+        }
+
+        .winner-anim {
+            animation: pulse-gold 2s infinite;
+            border-color: #d4af37;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center p-4">
+
+    <!-- 顶部状态栏 -->
+    <header class="w-full max-w-4xl flex justify-between items-center mb-6 bg-slate-800 p-4 rounded-2xl shadow-lg border border-slate-700">
+        <div class="flex items-center space-x-3">
+            <div class="text-3xl">💰</div>
+            <div>
+                <p class="text-xs text-slate-400 uppercase font-bold">我的现金</p>
+                <p id="player-money" class="text-xl font-black text-emerald-400">$10,000</p>
+            </div>
+        </div>
+        <h1 class="game-font text-2xl md:text-4xl text-amber-500 tracking-widest">竞拍之王</h1>
+        <div class="text-right">
+            <p class="text-xs text-slate-400 uppercase font-bold">当前轮次</p>
+            <p id="round-display" class="text-xl font-black text-amber-400">1 / 5</p>
+        </div>
+    </header>
+
+    <main class="w-full max-w-4xl grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <!-- 左侧：仓库信息 -->
+        <div class="lg:col-span-2 space-y-4">
+            <div class="auction-card rounded-3xl p-6 relative overflow-hidden">
+                <div class="absolute top-0 right-0 p-4 opacity-10 text-6xl">📦</div>
+                <h2 class="text-xl font-bold mb-4 flex items-center">
+                    <span class="mr-2">🏪</span> 编号 #<span id="warehouse-id">8829</span> 待拍仓库
+                </h2>
+                
+                <!-- 物品展示区 -->
+                <div id="items-container" class="space-y-3 min-h-[240px]">
+                    <!-- 动态插入物品 -->
+                </div>
+
+                <div class="mt-6 pt-4 border-t border-slate-700 flex justify-between items-end">
+                    <div>
+                        <p class="text-xs text-slate-400">预估价值范围</p>
+                        <p id="est-value" class="text-lg font-bold text-slate-200">$??? - $???</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-xs text-slate-400">当前最高出价</p>
+                        <p id="current-highest" class="text-2xl font-black text-blue-400">$0</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 出价控制区 -->
+            <div id="action-panel" class="bg-slate-800 rounded-3xl p-6 border border-slate-700">
+                <p class="text-sm mb-3 text-slate-300">请输入你的秘密出价（本轮）：</p>
+                <div class="flex space-x-3">
+                    <input type="number" id="bid-input" placeholder="输入金额..." 
+                           class="flex-1 bg-slate-900 border border-slate-600 rounded-xl px-4 py-3 text-xl font-bold focus:outline-none focus:border-amber-500">
+                    <button onclick="placeBid()" id="bid-btn" 
+                            class="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold px-8 py-3 rounded-xl transition-all transform active:scale-95">
+                        确认出价
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 右侧：对手信息 -->
+        <div class="space-y-4">
+            <h3 class="font-bold text-slate-400 uppercase text-xs px-2">竞争对手 (AI)</h3>
+            <div id="opponents-list" class="space-y-3">
+                <!-- 动态插入对手 -->
+            </div>
+            
+            <!-- 游戏日志 -->
+            <div class="bg-black/30 rounded-2xl p-4 h-48 overflow-y-auto text-xs font-mono text-slate-400 space-y-1 no-scrollbar" id="game-log">
+                <div>> 系统已就绪，等待第一轮开拍...</div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 结算弹窗 -->
+    <div id="result-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden z-[100] flex items-center justify-center p-4">
+        <div class="bg-slate-800 border-2 border-amber-500 rounded-3xl max-w-md w-full p-8 text-center">
+            <h2 id="modal-title" class="game-font text-4xl text-amber-500 mb-2">竞拍结束</h2>
+            <p id="modal-winner" class="text-xl mb-6">获胜者: 玩家</p>
+            
+            <div class="space-y-4 bg-slate-900/50 p-6 rounded-2xl mb-6">
+                <div class="flex justify-between"><span>成交价格:</span><span id="res-price" class="font-bold text-red-400"></span></div>
+                <div class="flex justify-between"><span>仓库实际价值:</span><span id="res-actual" class="font-bold text-emerald-400"></span></div>
+                <div class="border-t border-slate-700 pt-2 flex justify-between text-lg font-bold">
+                    <span>最终盈亏:</span><span id="res-profit"></span>
+                </div>
+            </div>
+
+            <button onclick="initGame()" class="w-full bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold py-4 rounded-2xl transition-transform active:scale-95">
+                下一场拍卖
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // 游戏配置
+        const ITEM_POOL = [
+            { name: "老式黑胶唱机", min: 200, max: 800, icon: "📻" },
+            { name: "尘封的保险柜", min: 500, max: 5000, icon: "🔐" },
+            { name: "名牌运动鞋堆", min: 100, max: 1500, icon: "👟" },
+            { name: "复古游戏机", min: 300, max: 1200, icon: "🎮" },
+            { name: "生锈的摩托车", min: 800, max: 4000, icon: "🏍️" },
+            { name: "艺术品油画", min: 50, max: 8000, icon: "🖼️" },
+            { name: "旧家电杂堆", min: 100, max: 500, icon: "📺" },
+            { name: "红木家具", min: 1000, max: 6000, icon: "🪑" },
+            { name: "工具箱", min: 50, max: 300, icon: "🧰" },
+            { name: "神秘包裹", min: 10, max: 10000, icon: "📦" }
+        ];
+
+        let gameState = {
+            playerMoney: 10000,
+            currentRound: 1,
+            maxRounds: 5,
+            warehouseItems: [],
+            actualValue: 0,
+            bids: { player: 0, ai1: 0, ai2: 0, ai3: 0 },
+            currentHighest: 0,
+            isGameOver: false
+        };
+
+        const opponents = [
+            { id: 'ai1', name: '贪婪的乔治', risk: 1.2, avatar: '👨‍🦱', money: 12000 },
+            { id: 'ai2', name: '谨慎的玛丽', risk: 0.8, avatar: '👩‍🦰', money: 9000 },
+            { id: 'ai3', name: '神秘的古董商', risk: 1.5, avatar: '👳‍♂️', money: 15000 }
+        ];
+
+        function log(msg) {
+            const logBox = document.getElementById('game-log');
+            const div = document.createElement('div');
+            div.innerHTML = `> ${msg}`;
+            logBox.appendChild(div);
+            logBox.scrollTop = logBox.scrollHeight;
+        }
+
+        function initGame() {
+            gameState.currentRound = 1;
+            gameState.isGameOver = false;
+            gameState.currentHighest = 0;
+            gameState.bids = { player: 0, ai1: 0, ai2: 0, ai3: 0 };
+            document.getElementById('result-modal').classList.add('hidden');
+            document.getElementById('bid-input').value = '';
+            document.getElementById('warehouse-id').innerText = Math.floor(Math.random() * 9000 + 1000);
+            
+            // 生成仓库物品
+            const itemCount = 5;
+            gameState.warehouseItems = [];
+            let totalActual = 0;
+            let totalMin = 0;
+            let totalMax = 0;
+
+            const shuffled = [...ITEM_POOL].sort(() => 0.5 - Math.random());
+            for(let i=0; i<itemCount; i++) {
+                const base = shuffled[i];
+                const value = Math.floor(Math.random() * (base.max - base.min) + base.min);
+                gameState.warehouseItems.push({ ...base, actual: value, revealed: false });
+                totalActual += value;
+                totalMin += base.min;
+                totalMax += base.max;
+            }
+            gameState.actualValue = totalActual;
+
+            updateUI();
+            renderOpponents();
+            log("新的一场竞拍开始了。这个仓库看起来很有潜力。");
+            document.getElementById('est-value').innerText = `$${totalMin} - $${totalMax}`;
+        }
+
+        function renderOpponents() {
+            const list = document.getElementById('opponents-list');
+            list.innerHTML = opponents.map(opp => `
+                <div id="card-${opp.id}" class="bg-slate-800/50 p-3 rounded-2xl border border-slate-700 flex items-center space-x-3 transition-all">
+                    <div class="text-3xl">${opp.avatar}</div>
+                    <div class="flex-1">
+                        <div class="flex justify-between items-center">
+                            <span class="font-bold text-sm">${opp.name}</span>
+                            <span class="text-[10px] text-slate-500">$${opp.money.toLocaleString()}</span>
+                        </div>
+                        <div id="bubble-${opp.id}" class="text-[10px] text-amber-400 mt-1 opacity-0">等待出价...</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function updateUI() {
+            document.getElementById('player-money').innerText = `$${gameState.playerMoney.toLocaleString()}`;
+            document.getElementById('round-display').innerText = `${gameState.currentRound} / ${gameState.maxRounds}`;
+            document.getElementById('current-highest').innerText = `$${gameState.currentHighest.toLocaleString()}`;
+
+            const container = document.getElementById('items-container');
+            container.innerHTML = gameState.warehouseItems.map((item, idx) => {
+                const isRevealed = idx < gameState.currentRound;
+                return `
+                    <div class="flex items-center p-3 rounded-xl ${isRevealed ? 'bg-slate-700/50 border border-slate-600' : 'bg-slate-900/30 border border-dashed border-slate-800 opacity-50'}">
+                        <div class="text-2xl mr-4">${isRevealed ? item.icon : '❓'}</div>
+                        <div class="flex-1">
+                            <p class="font-bold text-sm">${isRevealed ? item.name : '未知物品'}</p>
+                            <p class="text-[10px] text-slate-400">${isRevealed ? '这件物品状况良好' : '信息尚未解锁'}</p>
+                        </div>
+                        ${isRevealed ? `<span class="text-xs font-mono text-slate-400">$${item.min}-$${item.max}</span>` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function placeBid() {
+            if (gameState.isGameOver) return;
+            
+            const bidInput = document.getElementById('bid-input');
+            const playerBid = parseInt(bidInput.value) || 0;
+
+            if (playerBid < gameState.currentHighest) {
+                alert("你的出价不能低于当前最高价！");
+                return;
+            }
+            if (playerBid > gameState.playerMoney) {
+                alert("你没有足够的现金！");
+                return;
+            }
+
+            // 处理 AI 出价
+            processRound(playerBid);
+        }
+
+        function processRound(playerBid) {
+            gameState.bids.player = playerBid;
+            
+            // 简单的 AI 逻辑
+            opponents.forEach(opp => {
+                // AI 基于当前已知价值估算
+                let knownVal = 0;
+                for(let i=0; i<gameState.currentRound; i++) {
+                    knownVal += (gameState.warehouseItems[i].max + gameState.warehouseItems[i].min) / 2;
+                }
+                // AI 猜测剩余价值
+                let estRemaining = (gameState.maxRounds - gameState.currentRound) * 500;
+                let target = (knownVal + estRemaining) * opp.risk;
+                
+                // 确保 AI 出价递增
+                let minNext = Math.max(gameState.currentHighest * 1.05, target * (0.8 + Math.random() * 0.4));
+                gameState.bids[opp.id] = Math.floor(Math.min(minNext, opp.money));
+                
+                // 显示 AI 气泡
+                const bubble = document.getElementById(`bubble-${opp.id}`);
+                bubble.innerText = "出价完毕！";
+                bubble.classList.remove('opacity-0');
+            });
+
+            // 比较出价
+            const allBids = [
+                { id: 'Player', val: gameState.bids.player },
+                { id: opponents[0].name, val: gameState.bids.ai1 },
+                { id: opponents[1].name, val: gameState.bids.ai2 },
+                { id: opponents[2].name, val: gameState.bids.ai3 }
+            ];
+
+            allBids.sort((a, b) => b.val - a.val);
+            const winner = allBids[0];
+            const runnerUp = allBids[1];
+            
+            gameState.currentHighest = winner.val;
+            log(`第 ${gameState.currentRound} 轮结束。当前最高出价: <span class="text-amber-400">$${winner.val}</span> (${winner.id})`);
+
+            // 检查熔断机制
+            if (winner.val >= runnerUp.val * 2 && winner.val > 0) {
+                log(`🚨 <span class="text-red-400">熔断触发！</span> ${winner.id} 的出价高出第二名一倍多！`);
+                endAuction(winner);
+                return;
+            }
+
+            // 下一轮或结束
+            if (gameState.currentRound >= gameState.maxRounds) {
+                endAuction(winner);
+            } else {
+                gameState.currentRound++;
+                setTimeout(() => {
+                    updateUI();
+                    opponents.forEach(opp => document.getElementById(`bubble-${opp.id}`).classList.add('opacity-0'));
+                    document.getElementById('bid-input').value = '';
+                }, 1000);
+            }
+        }
+
+        function endAuction(winnerData) {
+            gameState.isGameOver = true;
+            const modal = document.getElementById('result-modal');
+            const profit = gameState.actualValue - winnerData.val;
+            
+            document.getElementById('modal-winner').innerText = `最终获胜者: ${winnerData.id}`;
+            document.getElementById('res-price').innerText = `$${winnerData.val.toLocaleString()}`;
+            document.getElementById('res-actual').innerText = `$${gameState.actualValue.toLocaleString()}`;
+            
+            const profitEl = document.getElementById('res-profit');
+            profitEl.innerText = (profit >= 0 ? '+' : '') + `$${profit.toLocaleString()}`;
+            profitEl.className = profit >= 0 ? 'text-emerald-400' : 'text-rose-400';
+
+            if (winnerData.id === 'Player') {
+                gameState.playerMoney += profit;
+                document.getElementById('modal-title').innerText = profit >= 0 ? "🎉 大获全胜" : "📉 亏损惨重";
+            } else {
+                document.getElementById('modal-title').innerText = "⚖️ 竞拍落空";
+            }
+
+            modal.classList.remove('hidden');
+        }
+
+        // 启动
+        window.onload = initGame;
+    </script>
+</body>
+</html>
